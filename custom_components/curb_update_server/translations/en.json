@@ -1,0 +1,29 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Curb Update Server",
+        "description": "Choose the address and port the update server will bind to. Make sure DNS is redirecting `updates.energycurb.com` to this Home Assistant instance and that the chosen port is reachable on the device's network. The server auto-stops after one hour as a safety.",
+        "data": {
+          "port": "Port",
+          "host": "Bind address"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "Curb Update Server is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Curb Update Server",
+        "description": "Change the bind address or port. The server will restart with the new settings.",
+        "data": {
+          "port": "Port",
+          "host": "Bind address"
+        }
+      }
+    }
+  }
+}

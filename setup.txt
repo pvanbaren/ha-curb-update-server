@@ -1,0 +1,64 @@
+#!/bin/sh
+#
+# Curb Energy Monitor — Community Root Access Payload
+#
+# REFERENCE COPY — for documentation only. The script that actually runs on
+# the device is bundled inside custom_components/curb_update_server/curbed/
+# update.tar.gz.gpg. Edits to this file do NOT reach the device; rebuild
+# update.tar.gz.gpg from https://github.com/codearranger/curbed (the source
+# of truth) and replace the bundled blob to change the on-device behavior.
+#
+# This script runs as root via the firmware update mechanism.
+# It changes the root password and enables SSH password login.
+#
+# Default password: curb123
+#
+# To use a different password, generate a hash with:
+#   openssl passwd -1 -salt curb 'yourpassword'
+# and replace the NEW_HASH below.
+#
+
+NEW_HASH='$1$curb$8L5K9LOoKj7c8uLQEe/Wz0'
+
+echo "=== Curb Community Root Access ==="
+
+mount -o remount,rw /
+
+if [ -f /data/hub-config.json ]; then
+    BACKUP=/data/hub-config.json.1
+    [ -f $BACKUP ] && BACKUP=/data/hub-config.json.2
+    [ -f $BACKUP ] && BACKUP=/data/hub-config.json.3
+    [ -f $BACKUP ] && BACKUP=/data/hub-config.json.4
+    cp /data/hub-config.json $BACKUP || true
+
+    echo "Redirecting endpoints to http://homeassistant.local:8989 ..."
+
+    # Redirect endpoints to the local Home Assistant
+    sed -i 's|https:|http:|g' /data/hub-config.json
+    sed -i 's|border\.prod\.energycurb\.com|homeassistant\.local:8989|g' /data/hub-config.json
+fi
+
+# The update script is present and executable, so we can assume this is the first time the script has run.
+# If the script has already run, don't modify the passwords again, since the user may have changed them.
+
+echo "Changing root and curb passwords..."
+
+# Change password hashes
+sed -i "s|^root:[^:]*|root:${NEW_HASH}|" /etc/shadow
+sed -i "s|^curb:[^:]*|curb:${NEW_HASH}|" /etc/shadow
+
+# Enable SSH password authentication
+# Dropbear uses -s flag to disable password auth
+sed -i 's/DROPBEAR_ARGS=.*-s.*/DROPBEAR_ARGS="-R"/' /etc/default/dropbear
+
+# Disable the update script so it doesn't overwrite our changes
+# or keep hitting the fake update server
+chmod -x /usr/local/sbin/update.sh
+
+sync
+mount -o remount,ro /
+
+echo "=== Done! ==="
+echo "SSH: ssh -o PubkeyAcceptedAlgorithms=+ssh-rsa root@<curb-ip>"
+echo "Password: curb123"
+echo "Serial: 115200 8N1 on J6 header"
