@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 
 from homeassistant.components.persistent_notification import (
     async_create as async_create_notification,
+    async_dismiss as async_dismiss_notification,
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PORT, Platform
@@ -143,6 +144,9 @@ class CurbUpdateServer:
                 "to deliver the payload."
             ),
             notification_id=f"{DOMAIN}_auto_stopped_{self.entry.entry_id}",
+        )
+        async_dismiss_notification(
+            self.hass, f"{DOMAIN}_status_{self.entry.entry_id}"
         )
         await self.async_stop()
 

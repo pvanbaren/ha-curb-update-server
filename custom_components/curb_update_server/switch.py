@@ -5,6 +5,9 @@ from __future__ import annotations
 import errno
 from typing import Any
 
+from homeassistant.components.persistent_notification import (
+    async_create as async_create_notification,
+)
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
@@ -13,7 +16,12 @@ from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import CurbUpdateServer
-from .const import DOMAIN, state_signal
+from .const import AUTO_STOP_SECONDS, DOMAIN, state_signal
+
+
+def _status_notification_id(entry_id: str) -> str:
+    """Notification id for the manual on/off status notification."""
+    return f"{DOMAIN}_status_{entry_id}"
 
 
 async def async_setup_entry(
@@ -78,6 +86,23 @@ class CurbUpdateServerSwitch(SwitchEntity):
                 msg = f"Failed to bind to {host}:{port}: {err}"
             raise HomeAssistantError(msg) from err
 
+        async_create_notification(
+            self.hass,
+            title="Curb Update Server started",
+            message=(
+                f"Listening on `{self._server.host}:{self._server.port}`. "
+                f"The server will auto-stop after {AUTO_STOP_SECONDS // 60} "
+                "minutes; toggle the switch off sooner if you're done."
+            ),
+            notification_id=_status_notification_id(self._entry.entry_id),
+        )
+
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Stop the server."""
         await self._server.async_stop()
+        async_create_notification(
+            self.hass,
+            title="Curb Update Server stopped",
+            message="The Curb Update Server is no longer listening.",
+            notification_id=_status_notification_id(self._entry.entry_id),
+        )
