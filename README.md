@@ -63,10 +63,10 @@ custom_components/curb_update_server/curbed/
 ## Logging
 
 The integration logs at:
-- **Info** — payload delivered to a device, plus API requests from devices
-- **Debug** — local/health-check requests
+- **Warning** — `update.tar.gz.gpg` (the payload) is served. This is the moment the device gets root-enable instructions.
+- **Info** — every other firmware file served (`os.tar.gz.gpg`, the `.md5sum` files), with the requesting client.
 
-Firmware-delivery details (SSH command, password reminder) are surfaced as a persistent UI notification rather than a log line.
+Firmware-delivery details (SSH command, password reminder) are surfaced as a persistent UI notification rather than embedded in the log line.
 
 ## Troubleshooting
 

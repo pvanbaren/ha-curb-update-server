@@ -169,26 +169,30 @@ class CurbUpdateServer:
         client = request.remote or ""
         is_local = client in ("127.0.0.1", "::1")
 
-        if not is_local and filename == "update.tar.gz.gpg":
-            _LOGGER.info("Firmware delivered to %s; device will reboot", client)
-            async_create_notification(
-                self.hass,
-                title="Curb device updated",
-                message=(
-                    f"Device `{client}` downloaded the firmware payload and "
-                    "will reboot. Wait 2-3 minutes, then SSH in with:\n\n"
-                    f"```\nssh root@{client}\n```\n\n"
-                    "Use the default password from the integration's "
-                    "documentation, then change it immediately with `passwd`."
-                ),
-                notification_id=(
-                    f"{DOMAIN}_delivered_{self.entry.entry_id}_{client}"
-                ),
+        if filename == "update.tar.gz.gpg":
+            _LOGGER.warning(
+                "Firmware payload served to %s%s",
+                client,
+                " (local — likely a test fetch)" if is_local else "",
             )
-        elif is_local:
-            _LOGGER.debug("Local request: %s %s", client, request.path)
+            if not is_local:
+                async_create_notification(
+                    self.hass,
+                    title="Curb device updated",
+                    message=(
+                        f"Device `{client}` downloaded the firmware payload "
+                        "and will reboot. Wait 2-3 minutes, then SSH in with:"
+                        f"\n\n```\nssh root@{client}\n```\n\n"
+                        "Use the default password from the integration's "
+                        "documentation, then change it immediately with "
+                        "`passwd`."
+                    ),
+                    notification_id=(
+                        f"{DOMAIN}_delivered_{self.entry.entry_id}_{client}"
+                    ),
+                )
         else:
-            _LOGGER.info("%s %s", client, request.path)
+            _LOGGER.info("Served %s to %s", filename, client)
 
         return web.FileResponse(path)
 
