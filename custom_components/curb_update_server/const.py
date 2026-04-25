@@ -10,6 +10,11 @@ DEFAULT_PORT = 80
 # one window is enough to deliver the payload to a device on the LAN.
 AUTO_STOP_SECONDS = 3600
 
+
+def state_signal(entry_id: str) -> str:
+    """Dispatcher signal name for server start/stop state transitions."""
+    return f"{DOMAIN}_state_{entry_id}"
+
 # Required firmware files
 REQUIRED_FILES = [
     "os.tar.gz.gpg",

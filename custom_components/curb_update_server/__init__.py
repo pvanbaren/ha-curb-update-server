@@ -2,11 +2,13 @@
 Curb Update Server integration for Home Assistant.
 
 Serves firmware update files for Curb Energy Monitors to enable root access.
+The HTTP listener is started and stopped on demand via the Curb Update Server
+switch and auto-stops after AUTO_STOP_SECONDS as a safety so it doesn't sit
+listening indefinitely after the device has been updated.
 """
 
 from __future__ import annotations
 
-import errno
 import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -20,9 +22,10 @@ from homeassistant.components.persistent_notification import (
     async_create as async_create_notification,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_HOST, CONF_PORT
+from homeassistant.const import CONF_HOST, CONF_PORT, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import async_call_later
 
 from .const import (
@@ -31,7 +34,10 @@ from .const import (
     DEFAULT_PORT,
     DOMAIN,
     REQUIRED_FILES,
+    state_signal,
 )
+
+PLATFORMS: list[Platform] = [Platform.SWITCH]
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -75,8 +81,16 @@ class CurbUpdateServer:
         self._site: web.TCPSite | None = None
         self._auto_stop_unsub = None
 
+    @property
+    def is_running(self) -> bool:
+        """Return whether the HTTP listener is currently bound."""
+        return self._site is not None
+
     async def async_start(self) -> None:
         """Start the update server. Raises OSError on bind failure."""
+        if self.is_running:
+            return
+
         app = web.Application()
         app.router.add_get("/api/firmware/{filename}", self._handle_firmware)
         app.router.add_get(
@@ -97,6 +111,7 @@ class CurbUpdateServer:
         self._auto_stop_unsub = async_call_later(
             self.hass, AUTO_STOP_SECONDS, self._async_auto_stop
         )
+        async_dispatcher_send(self.hass, state_signal(self.entry.entry_id))
 
         _LOGGER.info(
             "Curb Update Server started on %s:%d. "
@@ -115,7 +130,7 @@ class CurbUpdateServer:
 
         _LOGGER.warning(
             "Auto-stopping Curb Update Server after %d seconds. "
-            "Reload the integration if you still need to deliver the payload.",
+            "Toggle the switch back on if you still need to deliver the payload.",
             AUTO_STOP_SECONDS,
         )
         async_create_notification(
@@ -123,9 +138,9 @@ class CurbUpdateServer:
             title="Curb Update Server auto-stopped",
             message=(
                 f"The Curb Update Server has been stopped automatically "
-                f"after {AUTO_STOP_SECONDS // 60} minutes for safety. "
-                "Reload the integration from **Settings → Devices & services** "
-                "if you still need to deliver the payload."
+                f"after {AUTO_STOP_SECONDS // 60} minutes for safety. Toggle "
+                "the **Curb Update Server** switch back on if you still need "
+                "to deliver the payload."
             ),
             notification_id=f"{DOMAIN}_auto_stopped_{self.entry.entry_id}",
         )
@@ -178,13 +193,19 @@ class CurbUpdateServer:
         if self._auto_stop_unsub is not None:
             self._auto_stop_unsub()
             self._auto_stop_unsub = None
+
+        was_running = self.is_running
+
         if self._site is not None:
             await self._site.stop()
             self._site = None
         if self._runner is not None:
             await self._runner.cleanup()
             self._runner = None
-        _LOGGER.info("Curb Update Server stopped")
+
+        if was_running:
+            async_dispatcher_send(self.hass, state_signal(self.entry.entry_id))
+            _LOGGER.info("Curb Update Server stopped")
 
 
 async def _async_update_listener(
@@ -195,7 +216,11 @@ async def _async_update_listener(
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up Curb Update Server from a config entry."""
+    """Set up Curb Update Server from a config entry.
+
+    The HTTP listener is NOT started here — the user starts it on demand via
+    the Curb Update Server switch, and it auto-stops after AUTO_STOP_SECONDS.
+    """
     curbed_dir = Path(__file__).parent / "curbed"
 
     if not await hass.async_add_executor_job(
@@ -211,31 +236,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     port = options.get(CONF_PORT, DEFAULT_PORT)
 
     server = CurbUpdateServer(hass, entry, curbed_dir, host, port)
-
-    try:
-        await server.async_start()
-    except OSError as err:
-        await server.async_stop()
-        if err.errno in (errno.EADDRINUSE, errno.EADDRNOTAVAIL):
-            raise ConfigEntryNotReady(
-                f"Address {host}:{port} is unavailable: {err}"
-            ) from err
-        if err.errno == errno.EACCES:
-            _LOGGER.error(
-                "Permission denied binding to %s:%d. Pick a port >1024 "
-                "or grant CAP_NET_BIND_SERVICE.",
-                host,
-                port,
-            )
-            return False
-        raise ConfigEntryNotReady(
-            f"Failed to bind to {host}:{port}: {err}"
-        ) from err
-    except Exception:
-        await server.async_stop()
-        raise
-
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = server
+
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
 
     return True
@@ -243,6 +246,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
+    unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if not unloaded:
+        return False
+
     server = hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
     if not hass.data.get(DOMAIN):
         hass.data.pop(DOMAIN, None)

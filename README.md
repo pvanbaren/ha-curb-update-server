@@ -36,7 +36,7 @@ custom_components/curb_update_server/curbed/
 
 ## Usage
 
-1. Once the integration is added, the server starts automatically on the configured address and port. As a safety, the server **auto-stops after one hour**; reload the integration from **Settings → Devices & services** if you need another window. To change the bind address or port later, open the integration's **Configure** screen — the server will reload with the new settings.
+1. Once the integration is added, a **Curb Update Server** switch becomes available. The HTTP listener is **off by default** — toggle the switch on when you want to deliver an update. As a safety, the server **auto-stops after one hour**; toggle the switch back on if you need another window. To change the bind address or port later, open the integration's **Configure** screen — the server will reload with the new settings.
 
 2. The integration serves the firmware files at:
    - `/api/firmware/os.tar.gz.gpg`
@@ -46,7 +46,7 @@ custom_components/curb_update_server/curbed/
 
 3. When a Curb device downloads the payload, the integration creates a sticky **persistent notification** ("Curb device updated") with SSH instructions. A neutral info-level log line is also emitted for log-based automations.
 
-4. Once the curb device has been updated, you can remove this integration from **Settings → Devices & services** — it is needed only to redirect the device output to Home Assistant. The auto-stop timer also covers this case if you forget.
+4. Once the curb device has been updated, remove this integration from **Settings → Devices & services** — it is needed only to redirect the device output to Home Assistant. The integration does not run on its own; the listener stays off until you toggle the switch, so leaving it installed is harmless if you forget.
 
 5. Install https://github.com/pvanbaren/ha-energycurb to configure the Curb device and allow Home Assistant to receive the measurements.
 
